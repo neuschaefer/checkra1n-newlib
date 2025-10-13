@@ -1,6 +1,13 @@
 ARCH                        := aarch64-none-darwin
 SRC                         := src
 BUILD                       := build
+
+NEWLIB_VERSION              := 4.1.0
+NEWLIB_DIR                  := newlib-$(NEWLIB_VERSION)
+NEWLIB_TAR                  := newlib-$(NEWLIB_VERSION).tar.gz
+NEWLIB_TAR_DL               := https://www.sourceware.org/ftp/newlib/$(NEWLIB_TAR)
+NEWLIB_TAR_SHA256           := f296e372f51324224d387cc116dc37a6bd397198756746f93a2b02e9a5d40154
+
 # XXX: This makes PREFIX an absolute path, which breaks if there's spaces in any path component and
 #      kills the ability to move the repo around without a "make distclean", but for now, newlib requires this.
 PREFIX                      := $(shell pwd)
@@ -89,6 +96,17 @@ $(ARCH)/lib/libc.a: $(BUILD)/libc.a
 $(BUILD)/libc.a: $(BUILD)/Makefile always
 	$(MAKE) -C $(BUILD) all
 
+# Download and patch newlib
+$(NEWLIB_TAR):
+	wget -O $@.new $(NEWLIB_TAR_DL)
+	echo $(NEWLIB_TAR_SHA256) $(NEWLIB_TAR).new | sha256sum -c
+	mv $@.new $@
+
+$(SRC): $(NEWLIB_TAR)
+	tar xf $(NEWLIB_TAR)
+	for patch in patches/*; do (cd $(NEWLIB_DIR) && patch -p1) < $$patch; done
+	mv $(NEWLIB_DIR) $@
+
 # Dependency
 $(BUILD)/Makefile: Makefile $(SRC)/newlib/configure $(SRC)/newlib/Makefile.in | $(BUILD)
 	cd $(BUILD) && \
@@ -116,6 +134,9 @@ $(BUILD)/Makefile: Makefile $(SRC)/newlib/configure $(SRC)/newlib/Makefile.in | 
 	;
 	$(MAKE) -C $(BUILD) clean
 
+$(SRC)/newlib/configure: $(SRC)
+$(SRC)/newlib/Makefile.in: $(SRC)
+
 $(BUILD) $(ARCH)/fixup:
 	mkdir -p $@
 
@@ -124,4 +145,4 @@ clean:
 	@test -f $(BUILD)/Makefile && $(MAKE) -C $(BUILD) clean
 
 distclean:
-	rm -rf $(BUILD) $(ARCH)
+	rm -rf $(BUILD) $(ARCH) $(SRC) $(NEWLIB_TAR)
